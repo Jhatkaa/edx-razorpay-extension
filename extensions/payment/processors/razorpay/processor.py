@@ -4,12 +4,13 @@ import logging
 import razorpay
 import hmac
 import hashlib
+import requests as http_requests
 
 from django.middleware.csrf import get_token
 from django.urls import reverse
 from django.utils.functional import cached_property
 
-from ecommerce.core.url_utils import get_ecommerce_url
+from ecommerce.core.url_utils import get_ecommerce_url, get_lms_url
 from oscar.apps.payment.exceptions import GatewayError
 from ecommerce.extensions.payment.processors import BasePaymentProcessor, HandledProcessorResponse
 
@@ -53,7 +54,9 @@ class RazorPay(BasePaymentProcessor):
 
     def get_transaction_parameters(self, basket, request=None, use_client_side_checkout=False, **kwargs):
         client = self.razerpay_api
-        user = request.user
+        lms_user_id = request.user.lms_user_id
+        lms_user_api_url = get_lms_url(f'jhatkaa-signup/user-profile/?lms_user_id={lms_user_id}')
+        user = http_requests.get(lms_user_api_url).json()
 
         payment = client.payment_link.create({
             "amount": int(basket.total_incl_tax * 100),
@@ -66,9 +69,9 @@ class RazorPay(BasePaymentProcessor):
             },
             "description": f"Payment for the order - [{basket.order_number}]]",
             "customer": {
-                "name": user.profile.name,
-                "contact": user.extended_profile.phone_number,
-                "email": user.email,
+                "name": user['name'],
+                "contact": user['phone_number'],
+                "email": request.user.email,
             }
         })
         entry = self.record_processor_response(payment, transaction_id=payment['id'], basket=basket)
